@@ -258,10 +258,16 @@ class Client:
         The event loop that the client uses for asynchronous operations.
     """
     def __init__(
-        self,
-        *,
-        loop: Optional[asyncio.AbstractEventLoop] = None,
-        **options: Any,
+            self,
+            *,
+            loop: Optional[asyncio.AbstractEventLoop] = None,
+            lazy_load_commands: bool = True,
+            rollout_associate_known: bool = True,
+            rollout_delete_unknown: bool = True,
+            rollout_register_new: bool = True,
+            rollout_update_known: bool = True,
+            rollout_all_guilds: bool = False,
+            **options: Any,
     ):
         # self.ws is set in the connect method
         self.ws: DiscordWebSocket = None  # type: ignore
@@ -291,13 +297,19 @@ class Client:
         self._ready: asyncio.Event = asyncio.Event()
         self._connection._get_websocket = self._get_websocket
         self._connection._get_client = lambda: self
-        self._lazy_load_commands: bool = options.pop('lazy_load_commands', True)
+        self._lazy_load_commands: bool = lazy_load_commands
+        # self._lazy_load_commands: bool = options.pop('lazy_load_commands', True)
         self._client_cogs: Set[ClientCog] = set()
-        self._rollout_associate_known: bool = options.pop("rollout_associate_known", True)
-        self._rollout_delete_unknown: bool = options.pop("rollout_delete_unknown", True)
-        self._rollout_register_new: bool = options.pop("rollout_register_new", True)
-        self._rollout_update_known: bool = options.pop("rollout_update_known", True)
-        self._rollout_all_guilds: bool = options.pop("rollout_all_guilds", False)
+        self._rollout_associate_known: bool = rollout_associate_known
+        self._rollout_delete_unknown: bool = rollout_delete_unknown
+        self._rollout_register_new: bool = rollout_register_new
+        self._rollout_update_known: bool = rollout_update_known
+        self._rollout_all_guilds: bool = rollout_all_guilds
+        # self._rollout_associate_known: bool = options.pop("rollout_associate_known", True)
+        # self._rollout_delete_unknown: bool = options.pop("rollout_delete_unknown", True)
+        # self._rollout_register_new: bool = options.pop("rollout_register_new", True)
+        # self._rollout_update_known: bool = options.pop("rollout_update_known", True)
+        # self._rollout_all_guilds: bool = options.pop("rollout_all_guilds", False)
         self._application_commands_to_add: Set[ApplicationCommand] = set()
 
         if VoiceClient.warn_nacl:
@@ -1978,6 +1990,8 @@ class Client:
 
     def _add_decorated_application_commands(self) -> None:
         for command in self._application_commands_to_add:
+            command.from_callback(command.callback, call_children=True)
+
             self.add_application_command(command, use_rollout=True)
 
     def add_all_cog_commands(self) -> None:
@@ -1988,6 +2002,7 @@ class Client:
                     self.add_application_command(cmd, use_rollout=True)
 
     def add_cog(self, cog: ClientCog) -> None:
+        # cog.process_app_cmds()
         for app_cmd in cog.to_register:
             self.add_application_command(app_cmd, use_rollout=True)
         self._client_cogs.add(cog)
