@@ -56,9 +56,9 @@ from .utils import MISSING, find
 
 if TYPE_CHECKING:
     from .state import ConnectionState
-    _SlashOptionMetaBase = Any
+    _CustomTypingMetaBase = Any
 else:
-    _SlashOptionMetaBase = object
+    _CustomTypingMetaBase = object
 
 
 __all__ = (
@@ -132,7 +132,7 @@ class BaseCommandOption(ApplicationCommandOption):
         """Name of the kwarg in the function/method"""
 
 
-class OptionConverter:
+class OptionConverter(_CustomTypingMetaBase):
     def __init__(self, param_type: Union[type, ApplicationCommandOptionType] = str):
         self.type: Union[type, ApplicationCommandOptionType] = param_type
 
@@ -343,7 +343,6 @@ class AutocompleteCommandMixin:
                 await interaction.response.send_autocomplete(value)
 
     def from_autocomplete(self):
-        # print(f"Making autocomplete with ac {self._temp_autocomplete_callbacks} and options {self.options}")
         for arg_name, callback in self._temp_autocomplete_callbacks.items():
             found = False
             for name, option in self.options.items():
@@ -354,7 +353,6 @@ class AutocompleteCommandMixin:
                     if option.autocomplete:
                         # option.autocomplete_callback = callback
                         option.from_autocomplete_callback(callback)
-                        print(f"Found autocomplete arg {name}")
                         found = True
             if found:
                 continue
@@ -461,7 +459,7 @@ class SlashCommandMixin(metaclass=ABCMeta):
 
 
 # Extends Any so that type checkers won't complain that it's a default for a parameter of a different type
-class SlashOption(ApplicationCommandOption, _SlashOptionMetaBase):
+class SlashOption(ApplicationCommandOption, _CustomTypingMetaBase):
     """Provides Discord with information about an option in a command.
 
     When this class is set as the default argument of a parameter in an Application Command, additional information
@@ -567,7 +565,6 @@ class SlashCommandOption(BaseCommandOption, SlashOption, AutocompleteOptionMixin
             self.required = False
         elif parameter.default is not parameter.empty and not cmd_arg_given:
             # If a default was given AND it's not SlashOption...
-            # print(f"Set default")
             self.required = False
         else:  # Parameters in Python, by default, are required. While Discord defaults to not-required, this is Python.
             self.required = True
@@ -1078,305 +1075,305 @@ class MessageApplicationCommand(BaseApplicationCommand):
         super().from_callback(callback, option_class=option_class)
 
 
-# # Extends Any so that type checkers won't complain that it's a default for a parameter of a different type
-# class SlashOption(_SlashOptionMetaBase):
-#     """Provides Discord with information about an option in a command.
-#
-#     When this class is set as the default argument of a parameter in an Application Command, additional information
-#     about the parameter is sent to Discord for the user to see.
-#
-#     Parameters
-#     ----------
-#     name: :class:`str`
-#         The name of the Option on Discords side. If left as None, it defaults to the parameter name.
-#     description: :class:`str`
-#         The description of the Option on Discords side. If left as None, it defaults to "".
-#     required: :class:`bool`
-#         If a user is required to provide this argument before sending the command. Defaults to Discords choice. (False at this time)
-#     choices: Union[Dict[:class:`str`, Union[:class:`str`, :class:`int`, :class:`float`]], Iterable[Union[:class:`str`, :class:`int`, :class:`float`]]]
-#         A list of choices that a user must choose.
-#         If a :class:`dict` is given, the keys are what the users are able to see, the values are what is sent back
-#         to the bot.
-#         Otherwise, it is treated as an `Iterable` where what the user sees and is sent back to the bot are the same.
-#     channel_types: List[:class:`ChannelType`]
-#         List of `ChannelType` enums, limiting the users choice to only those channel types. The parameter must be
-#         typed as :class:`GuildChannel` for this to function.
-#     min_value: Union[:class:`int`, :class:`float`]
-#         Minimum integer or floating point value the user is allowed to input. The parameter must be typed as an
-#         :class:`int` or :class:`float` for this to function.
-#     max_value: Union[:class:`int`, :class:`float`]
-#         Maximum integer or floating point value the user is allowed to input. The parameter must be typed as an
-#         :class:`int` or :class:`float` for this to function.
-#     autocomplete: :class:`bool`
-#         If this parameter has an autocomplete function decorated for it. If unset, it will automatically be `True`
-#         if an autocomplete function for it is found.
-#     default: Any
-#         When required is not True and the user doesn't provide a value for this Option, this value is given instead.
-#     verify: :class:`bool`
-#         If True, the given values will be checked to ensure that the payload to Discord is valid.
-#     """
-#     def __init__(
-#             self,
-#             name: str = MISSING,
-#             description: str = MISSING,
-#             required: bool = MISSING,
-#             # choices: Dict[str, Union[str, int, float]] = MISSING,
-#             choices: Union[Dict[str, Union[str, int, float]], Iterable[Union[str, int, float]]] = MISSING,
-#             channel_types: List[ChannelType] = MISSING,
-#             min_value: Union[int, float] = MISSING,
-#             max_value: Union[int, float] = MISSING,
-#             autocomplete: bool = MISSING,
-#             default: Any = None,
-#             verify: bool = True
-#     ):
-#         self.name: Optional[str] = name
-#         self.description: Optional[str] = description
-#         self.required: Optional[bool] = required
-#         self.choices: Optional[Union[Iterable, dict]] = choices
-#         self.channel_types: Optional[List[ChannelType]] = channel_types
-#         self.min_value: Optional[Union[int, float]] = min_value
-#         self.max_value: Optional[Union[int, float]] = max_value
-#         self.autocomplete: Optional[bool] = autocomplete
-#         self.default: Any = default
-#         self._verify = verify
-#         if self._verify:
-#             self.verify()
-#
-#     def verify(self) -> bool:
-#         """Checks if the given values conflict with one another or are invalid."""
-#         if self.choices and self.autocomplete:  # Incompatible according to Discord Docs.
-#             raise ValueError("Autocomplete may not be set to true if choices are present.")
-#         return True
-#
-#
-# class CommandOption(SlashOption):
-#     """Represents a Python function parameter that corresponds to a Discord Option.
-#
-#     This must set and/or handle all variables from SlashOption, hence the subclass.
-#     This should not be created by the user, only by other Application Command-related classes.
-#
-#     Parameters
-#     ----------
-#     parameter: :class:`inspect.Parameter`
-#         The Application Command Parameter object to read and make usable by Discord.
-#     """
-#
-#     option_types = {
-#         str: ApplicationCommandOptionType.string,
-#         int: ApplicationCommandOptionType.integer,
-#         bool: ApplicationCommandOptionType.boolean,
-#         User: ApplicationCommandOptionType.user,
-#         Member: ApplicationCommandOptionType.user,
-#         GuildChannel: ApplicationCommandOptionType.channel,
-#         Role: ApplicationCommandOptionType.role,
-#         # TODO: Is this in the library at all currently? This includes Users and Roles.
-#         # Mentionable: CommandOptionType.mentionable
-#         float: ApplicationCommandOptionType.number,
-#         Message: ApplicationCommandOptionType.integer,  # TODO: This is janky, the user provides an ID or something? Ugh.
-#         Attachment: ApplicationCommandOptionType.attachment,
-#     }
-#     """Maps Python annotations/typehints to Discord Application Command type values."""
-#     def __init__(self, parameter: Parameter):
-#         super().__init__()
-#         self.parameter = parameter
-#         cmd_arg_given = False
-#         cmd_arg = SlashOption()
-#
-#         if isinstance(parameter.default, SlashOption):
-#             cmd_arg = parameter.default
-#             cmd_arg_given = True
-#         self.functional_name = parameter.name
-#
-#         # All optional variables need to default to MISSING for functions down the line to understand that they were
-#         # never set. If Discord demands a value, it should be the minimum value required.
-#         self.name = cmd_arg.name or parameter.name
-#         self._description = cmd_arg.description or MISSING
-#         # Set required to False if an Optional[...] or Union[..., None] type annotation is given.
-#         self.required = False if type(None) in typing.get_args(parameter.annotation) else MISSING
-#         # Override self.required if it was set in the command argument.
-#         if cmd_arg.required is not MISSING:
-#             self.required = cmd_arg.required
-#         self.choices = cmd_arg.choices or MISSING
-#         self.channel_types = cmd_arg.channel_types or MISSING
-#         # min_value of 0 will cause an `or` to give the variable MISSING
-#         self.min_value = cmd_arg.min_value if cmd_arg.min_value is not MISSING else MISSING
-#         # max_value of 0 will cause an `or` to give the variable MISSING
-#         self.max_value = cmd_arg.max_value if cmd_arg.max_value is not MISSING else MISSING
-#         # autocomplete set to False will cause an `or` to give the variable MISSING
-#         self.autocomplete = cmd_arg.autocomplete if cmd_arg.autocomplete is not MISSING else MISSING
-#
-#         if not cmd_arg_given and parameter.default is not parameter.empty:
-#             # If the parameter default is not a SlashOption, it should be set as the default.
-#             self.default = parameter.default
-#         else:
-#             self.default = cmd_arg.default
-#
-#         self.autocomplete_function: Optional[Callable] = MISSING
-#         self.type: ApplicationCommandOptionType = self.get_type(parameter.annotation)
-#
-#         if cmd_arg._verify:
-#             self.verify()
-#
-#     # Basic getters and setters.
-#
-#     @property
-#     def description(self) -> str:
-#         """If no description is set, it returns "No description provided" """
-#         if not self._description:
-#             return "No description provided"
-#         else:
-#             return self._description
-#
-#     @description.setter
-#     def description(self, value: str):
-#         self._description = value
-#
-#     def get_type(self, param_typing: type) -> ApplicationCommandOptionType:
-#         """Translates a Python or Nextcord :class:`type` into a Discord typing.
-#
-#         Parameters
-#         ----------
-#         param_typing: :class:`type`
-#             Python or Nextcord type to translate.
-#         Returns
-#         -------
-#         :class:`ApplicationCommandOptionType`
-#             Enum with a value corresponding to the given type.
-#         Raises
-#         ------
-#         :class:`NotImplementedError`
-#             Raised if the given typing cannot be translated to a Discord typing.
-#         """
-#
-#         if param_typing is self.parameter.empty:
-#             return ApplicationCommandOptionType.string
-#         elif valid_type := self.option_types.get(param_typing, None):
-#             return valid_type
-#         # If the typing is Optional[...] or Union[..., None], get the type of the first non-None type.
-#         elif (
-#             type(None) in typing.get_args(param_typing)
-#             and (inner_type := find(lambda t: t is not type(None), typing.get_args(param_typing)))
-#             and (valid_type := self.option_types.get(inner_type, None))
-#         ):
-#             return valid_type
-#         else:
-#             raise NotImplementedError(f'Type "{param_typing}" isn\'t a supported typing for Application Commands.')
-#
-#     def verify(self) -> None:
-#         """This should run through :class:`SlashOption` variables and raise errors when conflicting data is given."""
-#         super().verify()
-#         if self.channel_types and self.type is not ApplicationCommandOptionType.channel:
-#             raise ValueError("channel_types can only be given when the var is typed as nextcord.abc.GuildChannel")
-#         if self.min_value is not MISSING and type(self.min_value) not in (int, float):
-#             raise ValueError("min_value must be an int or float.")
-#         if self.max_value is not MISSING and type(self.max_value) not in (int, float):
-#             raise ValueError("max_value must be an int or float.")
-#         if (self.min_value is not MISSING or self.max_value is not MISSING) and self.type not in (
-#                 ApplicationCommandOptionType.integer, ApplicationCommandOptionType.number):
-#             raise ValueError("min_value or max_value can only be set if the type is integer or number.")
-#
-#     async def handle_slash_argument(self, state: ConnectionState, argument: Any, interaction: Interaction) -> Any:
-#         """Handles arguments, specifically for Slash Commands."""
-#         if self.type is ApplicationCommandOptionType.channel:
-#             return state.get_channel(int(argument))
-#         elif self.type is ApplicationCommandOptionType.user:
-#             user_id = int(argument)
-#             ret = interaction.guild.get_member(user_id) if interaction.guild else state.get_user(user_id)
-#             if ret:
-#                 return ret
-#             else:
-#                 # Return an Member object if the required data is available, otherwise fallback to User.
-#                 if "members" in interaction.data["resolved"] and (interaction.guild, interaction.guild_id):
-#                     resolved_members_payload = interaction.data["resolved"]["members"]
-#                     resolved_members: Dict[int, Member] = {}
-#                     guild = interaction.guild or state._get_guild(interaction.guild_id)
-#                     # Because we modify the payload further down,
-#                     # a copy is made to avoid affecting methods that read the interaction data ahead of this function.
-#                     for member_id, member_payload in resolved_members_payload.copy().items():
-#                         member = guild.get_member(int(member_id))
-#                         # Can't find the member in cache, let's construct one.
-#                         if not member:
-#                             user_payload = interaction.data["resolved"]["users"][member_id]
-#                             # This is required to construct the Member.
-#                             member_payload["user"] = user_payload
-#                             member = Member(data=member_payload, guild=guild, state=state)
-#                             guild._add_member(member)
-#
-#                         resolved_members[member.id] = member
-#
-#                     return resolved_members[user_id]
-#                 else:
-#                     # The interaction data gives a dictionary of resolved users, best to use it if cache isn't available.
-#                     resolved_users_payload = interaction.data["resolved"]["users"]
-#                     resolved_users = {int(raw_id): state.store_user(user_payload) for raw_id, user_payload in resolved_users_payload.items()}
-#                     return resolved_users[user_id]
-#
-#         elif self.type is ApplicationCommandOptionType.role:
-#             return interaction.guild.get_role(int(argument))
-#         elif self.type is ApplicationCommandOptionType.integer:
-#             return int(argument)
-#         elif self.type is ApplicationCommandOptionType.number:
-#             return float(argument)
-#         elif self.type is Message:  # TODO: This is mostly a workaround for Message commands, switch to handles below.
-#             return state._get_message(int(argument))
-#         elif self.type is ApplicationCommandOptionType.attachment:
-#             resolved_attachment_data: dict = interaction.data["resolved"]["attachments"][argument]
-#             return Attachment(data=resolved_attachment_data, state=state)
-#         return argument
-#
-#     async def handle_message_argument(self, state: ConnectionState, argument: Any, interaction: Interaction):
-#         """For possible future use, will handle arguments specific to Message Commands (Context Menu type.)"""
-#         raise NotImplementedError  # TODO: Even worth doing? We pass in what we know already.
-#
-#     async def handle_user_argument(self, state: ConnectionState, argument: Any, interaction: Interaction):
-#         """For possible future use, will handle arguments specific to User Commands (Context Menu type.)"""
-#         raise NotImplementedError  # TODO: Even worth doing? We pass in what we know already.
-#
-#     @property
-#     def payload(self) -> dict:
-#         """Returns a payload meant for Discord for this specific Option.
-#
-#         Options that are not specified AND not required won't be in the returned payload.
-#
-#         Returns
-#         -------
-#         payload: :class:`dict`
-#             The Discord payload for this specific Option.
-#         """
-#         # TODO: Figure out why pycharm is being a dingus about self.type.value being an unsolved attribute.
-#         # noinspection PyUnresolvedReferences
-#         ret = {"type": self.type.value, "name": self.name, "description": self.description}
-#         # False is included in this because that's the default for Discord currently. Not putting in the required param
-#         # when possible minimizes the payload size and makes checks between registered and found commands easier.
-#         if self.required:
-#             ret["required"] = self.required
-#         elif self.required is False:
-#             pass  # Discord doesn't currently provide Required if it's False due to it being default.
-#         elif self.required is MISSING and self.default:
-#             pass  # If required isn't explicitly set and a default exists, don't say that this param is required.
-#         else:
-#             # While this violates Discord's default and our goal (not specified should return minimum or nothing), a
-#             # parameter being optional by default goes against traditional programming. A parameter not explicitly
-#             # stated to be optional should be required.
-#             ret["required"] = True
-#
-#         if self.choices:
-#             # Discord returns the names as strings, might as well do it here so payload comparison is easy.
-#             if isinstance(self.choices, dict):
-#                 ret["choices"] = [{"name": str(key), "value": value} for key, value in self.choices.items()]
-#             else:
-#                 ret["choices"] = [{"name": str(value), "value": value} for value in self.choices]
-#         if self.channel_types:
-#             # noinspection PyUnresolvedReferences
-#             ret["channel_types"] = [channel_type.value for channel_type in self.channel_types]
-#         # We don't ask for the payload if we have options, so no point in checking for options.
-#         if self.min_value is not MISSING:
-#             ret["min_value"] = self.min_value
-#         if self.max_value is not MISSING:
-#             ret["max_value"] = self.max_value
-#         if self.autocomplete is not MISSING:
-#             ret["autocomplete"] = self.autocomplete
-#         return ret
+# Extends Any so that type checkers won't complain that it's a default for a parameter of a different type
+class OldSlashOption(_CustomTypingMetaBase):
+    """Provides Discord with information about an option in a command.
+
+    When this class is set as the default argument of a parameter in an Application Command, additional information
+    about the parameter is sent to Discord for the user to see.
+
+    Parameters
+    ----------
+    name: :class:`str`
+        The name of the Option on Discords side. If left as None, it defaults to the parameter name.
+    description: :class:`str`
+        The description of the Option on Discords side. If left as None, it defaults to "".
+    required: :class:`bool`
+        If a user is required to provide this argument before sending the command. Defaults to Discords choice. (False at this time)
+    choices: Union[Dict[:class:`str`, Union[:class:`str`, :class:`int`, :class:`float`]], Iterable[Union[:class:`str`, :class:`int`, :class:`float`]]]
+        A list of choices that a user must choose.
+        If a :class:`dict` is given, the keys are what the users are able to see, the values are what is sent back
+        to the bot.
+        Otherwise, it is treated as an `Iterable` where what the user sees and is sent back to the bot are the same.
+    channel_types: List[:class:`ChannelType`]
+        List of `ChannelType` enums, limiting the users choice to only those channel types. The parameter must be
+        typed as :class:`GuildChannel` for this to function.
+    min_value: Union[:class:`int`, :class:`float`]
+        Minimum integer or floating point value the user is allowed to input. The parameter must be typed as an
+        :class:`int` or :class:`float` for this to function.
+    max_value: Union[:class:`int`, :class:`float`]
+        Maximum integer or floating point value the user is allowed to input. The parameter must be typed as an
+        :class:`int` or :class:`float` for this to function.
+    autocomplete: :class:`bool`
+        If this parameter has an autocomplete function decorated for it. If unset, it will automatically be `True`
+        if an autocomplete function for it is found.
+    default: Any
+        When required is not True and the user doesn't provide a value for this Option, this value is given instead.
+    verify: :class:`bool`
+        If True, the given values will be checked to ensure that the payload to Discord is valid.
+    """
+    def __init__(
+            self,
+            name: str = MISSING,
+            description: str = MISSING,
+            required: bool = MISSING,
+            # choices: Dict[str, Union[str, int, float]] = MISSING,
+            choices: Union[Dict[str, Union[str, int, float]], Iterable[Union[str, int, float]]] = MISSING,
+            channel_types: List[ChannelType] = MISSING,
+            min_value: Union[int, float] = MISSING,
+            max_value: Union[int, float] = MISSING,
+            autocomplete: bool = MISSING,
+            default: Any = None,
+            verify: bool = True
+    ):
+        self.name: Optional[str] = name
+        self.description: Optional[str] = description
+        self.required: Optional[bool] = required
+        self.choices: Optional[Union[Iterable, dict]] = choices
+        self.channel_types: Optional[List[ChannelType]] = channel_types
+        self.min_value: Optional[Union[int, float]] = min_value
+        self.max_value: Optional[Union[int, float]] = max_value
+        self.autocomplete: Optional[bool] = autocomplete
+        self.default: Any = default
+        self._verify = verify
+        if self._verify:
+            self.verify()
+
+    def verify(self) -> bool:
+        """Checks if the given values conflict with one another or are invalid."""
+        if self.choices and self.autocomplete:  # Incompatible according to Discord Docs.
+            raise ValueError("Autocomplete may not be set to true if choices are present.")
+        return True
+
+
+class OldCommandOption(OldSlashOption):
+    """Represents a Python function parameter that corresponds to a Discord Option.
+
+    This must set and/or handle all variables from SlashOption, hence the subclass.
+    This should not be created by the user, only by other Application Command-related classes.
+
+    Parameters
+    ----------
+    parameter: :class:`inspect.Parameter`
+        The Application Command Parameter object to read and make usable by Discord.
+    """
+
+    option_types = {
+        str: ApplicationCommandOptionType.string,
+        int: ApplicationCommandOptionType.integer,
+        bool: ApplicationCommandOptionType.boolean,
+        User: ApplicationCommandOptionType.user,
+        Member: ApplicationCommandOptionType.user,
+        GuildChannel: ApplicationCommandOptionType.channel,
+        Role: ApplicationCommandOptionType.role,
+        # TODO: Is this in the library at all currently? This includes Users and Roles.
+        # Mentionable: CommandOptionType.mentionable
+        float: ApplicationCommandOptionType.number,
+        Message: ApplicationCommandOptionType.integer,  # TODO: This is janky, the user provides an ID or something? Ugh.
+        Attachment: ApplicationCommandOptionType.attachment,
+    }
+    """Maps Python annotations/typehints to Discord Application Command type values."""
+    def __init__(self, parameter: Parameter):
+        super().__init__()
+        self.parameter = parameter
+        cmd_arg_given = False
+        cmd_arg = SlashOption()
+
+        if isinstance(parameter.default, SlashOption):
+            cmd_arg = parameter.default
+            cmd_arg_given = True
+        self.functional_name = parameter.name
+
+        # All optional variables need to default to MISSING for functions down the line to understand that they were
+        # never set. If Discord demands a value, it should be the minimum value required.
+        self.name = cmd_arg.name or parameter.name
+        self._description = cmd_arg.description or MISSING
+        # Set required to False if an Optional[...] or Union[..., None] type annotation is given.
+        self.required = False if type(None) in typing.get_args(parameter.annotation) else MISSING
+        # Override self.required if it was set in the command argument.
+        if cmd_arg.required is not MISSING:
+            self.required = cmd_arg.required
+        self.choices = cmd_arg.choices or MISSING
+        self.channel_types = cmd_arg.channel_types or MISSING
+        # min_value of 0 will cause an `or` to give the variable MISSING
+        self.min_value = cmd_arg.min_value if cmd_arg.min_value is not MISSING else MISSING
+        # max_value of 0 will cause an `or` to give the variable MISSING
+        self.max_value = cmd_arg.max_value if cmd_arg.max_value is not MISSING else MISSING
+        # autocomplete set to False will cause an `or` to give the variable MISSING
+        self.autocomplete = cmd_arg.autocomplete if cmd_arg.autocomplete is not MISSING else MISSING
+
+        if not cmd_arg_given and parameter.default is not parameter.empty:
+            # If the parameter default is not a SlashOption, it should be set as the default.
+            self.default = parameter.default
+        else:
+            self.default = cmd_arg.default
+
+        self.autocomplete_function: Optional[Callable] = MISSING
+        self.type: ApplicationCommandOptionType = self.get_type(parameter.annotation)
+
+        if cmd_arg._verify:
+            self.verify()
+
+    # Basic getters and setters.
+
+    @property
+    def description(self) -> str:
+        """If no description is set, it returns "No description provided" """
+        if not self._description:
+            return "No description provided"
+        else:
+            return self._description
+
+    @description.setter
+    def description(self, value: str):
+        self._description = value
+
+    def get_type(self, param_typing: type) -> ApplicationCommandOptionType:
+        """Translates a Python or Nextcord :class:`type` into a Discord typing.
+
+        Parameters
+        ----------
+        param_typing: :class:`type`
+            Python or Nextcord type to translate.
+        Returns
+        -------
+        :class:`ApplicationCommandOptionType`
+            Enum with a value corresponding to the given type.
+        Raises
+        ------
+        :class:`NotImplementedError`
+            Raised if the given typing cannot be translated to a Discord typing.
+        """
+
+        if param_typing is self.parameter.empty:
+            return ApplicationCommandOptionType.string
+        elif valid_type := self.option_types.get(param_typing, None):
+            return valid_type
+        # If the typing is Optional[...] or Union[..., None], get the type of the first non-None type.
+        elif (
+            type(None) in typing.get_args(param_typing)
+            and (inner_type := find(lambda t: t is not type(None), typing.get_args(param_typing)))
+            and (valid_type := self.option_types.get(inner_type, None))
+        ):
+            return valid_type
+        else:
+            raise NotImplementedError(f'Type "{param_typing}" isn\'t a supported typing for Application Commands.')
+
+    def verify(self) -> None:
+        """This should run through :class:`SlashOption` variables and raise errors when conflicting data is given."""
+        super().verify()
+        if self.channel_types and self.type is not ApplicationCommandOptionType.channel:
+            raise ValueError("channel_types can only be given when the var is typed as nextcord.abc.GuildChannel")
+        if self.min_value is not MISSING and type(self.min_value) not in (int, float):
+            raise ValueError("min_value must be an int or float.")
+        if self.max_value is not MISSING and type(self.max_value) not in (int, float):
+            raise ValueError("max_value must be an int or float.")
+        if (self.min_value is not MISSING or self.max_value is not MISSING) and self.type not in (
+                ApplicationCommandOptionType.integer, ApplicationCommandOptionType.number):
+            raise ValueError("min_value or max_value can only be set if the type is integer or number.")
+
+    async def handle_slash_argument(self, state: ConnectionState, argument: Any, interaction: Interaction) -> Any:
+        """Handles arguments, specifically for Slash Commands."""
+        if self.type is ApplicationCommandOptionType.channel:
+            return state.get_channel(int(argument))
+        elif self.type is ApplicationCommandOptionType.user:
+            user_id = int(argument)
+            ret = interaction.guild.get_member(user_id) if interaction.guild else state.get_user(user_id)
+            if ret:
+                return ret
+            else:
+                # Return an Member object if the required data is available, otherwise fallback to User.
+                if "members" in interaction.data["resolved"] and (interaction.guild, interaction.guild_id):
+                    resolved_members_payload = interaction.data["resolved"]["members"]
+                    resolved_members: Dict[int, Member] = {}
+                    guild = interaction.guild or state._get_guild(interaction.guild_id)
+                    # Because we modify the payload further down,
+                    # a copy is made to avoid affecting methods that read the interaction data ahead of this function.
+                    for member_id, member_payload in resolved_members_payload.copy().items():
+                        member = guild.get_member(int(member_id))
+                        # Can't find the member in cache, let's construct one.
+                        if not member:
+                            user_payload = interaction.data["resolved"]["users"][member_id]
+                            # This is required to construct the Member.
+                            member_payload["user"] = user_payload
+                            member = Member(data=member_payload, guild=guild, state=state)
+                            guild._add_member(member)
+
+                        resolved_members[member.id] = member
+
+                    return resolved_members[user_id]
+                else:
+                    # The interaction data gives a dictionary of resolved users, best to use it if cache isn't available.
+                    resolved_users_payload = interaction.data["resolved"]["users"]
+                    resolved_users = {int(raw_id): state.store_user(user_payload) for raw_id, user_payload in resolved_users_payload.items()}
+                    return resolved_users[user_id]
+
+        elif self.type is ApplicationCommandOptionType.role:
+            return interaction.guild.get_role(int(argument))
+        elif self.type is ApplicationCommandOptionType.integer:
+            return int(argument)
+        elif self.type is ApplicationCommandOptionType.number:
+            return float(argument)
+        elif self.type is Message:  # TODO: This is mostly a workaround for Message commands, switch to handles below.
+            return state._get_message(int(argument))
+        elif self.type is ApplicationCommandOptionType.attachment:
+            resolved_attachment_data: dict = interaction.data["resolved"]["attachments"][argument]
+            return Attachment(data=resolved_attachment_data, state=state)
+        return argument
+
+    async def handle_message_argument(self, state: ConnectionState, argument: Any, interaction: Interaction):
+        """For possible future use, will handle arguments specific to Message Commands (Context Menu type.)"""
+        raise NotImplementedError  # TODO: Even worth doing? We pass in what we know already.
+
+    async def handle_user_argument(self, state: ConnectionState, argument: Any, interaction: Interaction):
+        """For possible future use, will handle arguments specific to User Commands (Context Menu type.)"""
+        raise NotImplementedError  # TODO: Even worth doing? We pass in what we know already.
+
+    @property
+    def payload(self) -> dict:
+        """Returns a payload meant for Discord for this specific Option.
+
+        Options that are not specified AND not required won't be in the returned payload.
+
+        Returns
+        -------
+        payload: :class:`dict`
+            The Discord payload for this specific Option.
+        """
+        # TODO: Figure out why pycharm is being a dingus about self.type.value being an unsolved attribute.
+        # noinspection PyUnresolvedReferences
+        ret = {"type": self.type.value, "name": self.name, "description": self.description}
+        # False is included in this because that's the default for Discord currently. Not putting in the required param
+        # when possible minimizes the payload size and makes checks between registered and found commands easier.
+        if self.required:
+            ret["required"] = self.required
+        elif self.required is False:
+            pass  # Discord doesn't currently provide Required if it's False due to it being default.
+        elif self.required is MISSING and self.default:
+            pass  # If required isn't explicitly set and a default exists, don't say that this param is required.
+        else:
+            # While this violates Discord's default and our goal (not specified should return minimum or nothing), a
+            # parameter being optional by default goes against traditional programming. A parameter not explicitly
+            # stated to be optional should be required.
+            ret["required"] = True
+
+        if self.choices:
+            # Discord returns the names as strings, might as well do it here so payload comparison is easy.
+            if isinstance(self.choices, dict):
+                ret["choices"] = [{"name": str(key), "value": value} for key, value in self.choices.items()]
+            else:
+                ret["choices"] = [{"name": str(value), "value": value} for value in self.choices]
+        if self.channel_types:
+            # noinspection PyUnresolvedReferences
+            ret["channel_types"] = [channel_type.value for channel_type in self.channel_types]
+        # We don't ask for the payload if we have options, so no point in checking for options.
+        if self.min_value is not MISSING:
+            ret["min_value"] = self.min_value
+        if self.max_value is not MISSING:
+            ret["max_value"] = self.max_value
+        if self.autocomplete is not MISSING:
+            ret["autocomplete"] = self.autocomplete
+        return ret
 
 
 class ApplicationSubcommand:
@@ -1414,7 +1411,7 @@ class ApplicationSubcommand:
         self.name: Optional[str] = name
         self._description: str = description
 
-        self.options: Dict[str, CommandOption] = {}
+        self.options: Dict[str, OldCommandOption] = {}
         self.children: Dict[str, ApplicationSubcommand] = {}
 
         # self._on_autocomplete: Dict[str, Callable] = {}  # TODO: Maybe move the callbacks into the CommandOptions?
