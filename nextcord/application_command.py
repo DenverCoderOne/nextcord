@@ -65,6 +65,7 @@ __all__ = (
     "ApplicationCommand",
     "ApplicationSubcommand",
     "ClientCog",
+    "Mentionable",
     "message_command",
     "SlashOption",
     "slash_command",
@@ -132,10 +133,10 @@ class BaseCommandOption(ApplicationCommandOption):
 
 
 class OptionConverter:
-    def __init__(self, param_type: Union[type, ApplicationCommandOptionType]):
+    def __init__(self, param_type: Union[type, ApplicationCommandOptionType] = str):
         self.type: Union[type, ApplicationCommandOptionType] = param_type
 
-    async def convert(self, interaction: Interaction, value: Any) -> Any:
+    async def convert(self, state: ConnectionState, interaction: Interaction, value: Any) -> Any:
         raise NotImplementedError
 
     def modify(self, option: BaseCommandOption) -> None:
@@ -507,7 +508,7 @@ class SlashOption(ApplicationCommandOption, _SlashOptionMetaBase):
             max_value: Union[int, float] = MISSING,
             autocomplete: bool = MISSING,
             autocomplete_callback: Callable = MISSING,
-            default: Any = None,
+            default: Any = MISSING,
             verify: bool = True
     ):
         super().__init__(name=name, description=description, required=required, choices=choices,
@@ -562,6 +563,12 @@ class SlashCommandOption(BaseCommandOption, SlashOption, AutocompleteOptionMixin
             self.required = cmd_arg.required
         elif type(None) in typing.get_args(parameter.annotation):  # If it's typed as Optional/None...
             self.required = False
+        elif cmd_arg.default is not MISSING:  # If the SlashOption has a default...
+            self.required = False
+        elif parameter.default is not parameter.empty and not cmd_arg_given:
+            # If a default was given AND it's not SlashOption...
+            # print(f"Set default")
+            self.required = False
         else:  # Parameters in Python, by default, are required. While Discord defaults to not-required, this is Python.
             self.required = True
         self.choices = cmd_arg.choices
@@ -581,9 +588,22 @@ class SlashCommandOption(BaseCommandOption, SlashOption, AutocompleteOptionMixin
             self.default = cmd_arg.default
 
         self.converter: Optional[OptionConverter] = MISSING
-        if isinstance(parameter.annotation, OptionConverter):
+
+        if isinstance(parameter.annotation, OptionConverter):  # If annotated with an instantiated OptionConverter...
             self.converter = parameter.annotation
+        elif inspect.isclass(parameter.annotation) and issubclass(parameter.annotation, OptionConverter):
+            # If annotated with OptionConverter...
+            self.converter = parameter.annotation()
+        else:
+            for t in typing.get_args(parameter.annotation):
+                if issubclass(t, OptionConverter):
+                    # If annotated with OptionConverter inside of Optional...
+                    self.converter = t()  # Optional cannot have instantiated objects in it apparently?
+                    break
+
+        if self.converter:
             self.type: ApplicationCommandOptionType = self.get_type(self.converter)
+
         else:
             self.type: ApplicationCommandOptionType = self.get_type(parameter.annotation)
 
@@ -656,7 +676,7 @@ class SlashCommandOption(BaseCommandOption, SlashOption, AutocompleteOptionMixin
             value = Attachment(data=resolved_attachment_data, state=state)
 
         if self.converter:
-            return await self.converter.convert(interaction, value)
+            return await self.converter.convert(state, interaction, value)
         else:
             return value
 
@@ -2424,6 +2444,17 @@ def user_command(
     return decorator
 
 
+class Mentionable(OptionConverter):
+    def __init__(self):
+        super().__init__(ApplicationCommandOptionType.mentionable)
+
+    async def convert(self, state: ConnectionState, interaction: Interaction, value: Any) -> Any:
+        mentionables = {mentionable.id: mentionable for mentionable in (
+                get_users_from_interaction(state, interaction) + get_roles_from_interaction(state, interaction)
+        )}
+        return mentionables[int(value)]
+
+
 def check_dictionary_values(dict1: dict, dict2: dict, *keywords) -> bool:
     """Helper function to quickly check if 2 dictionaries share the equal value for the same keyword(s).
     Used primarily for checking against the registered command data from Discord.
@@ -2494,4 +2525,16 @@ def get_messages_from_interaction(state: ConnectionState, interaction: Interacti
         if not (message := state._get_message(msg_id)):
             message = Message(channel=interaction.channel, data=msg_payload, state=state)
         ret.append(message)
+    return ret
+
+
+def get_roles_from_interaction(state: ConnectionState, interaction: Interaction) -> List[Role]:
+    data = interaction.data
+    role_payloads = data["resolved"]["roles"]
+    ret = []
+    for role_id, role_payload in role_payloads.items():
+        if not (role := interaction.guild.get_role(role_id)):
+        # if True:
+            role = Role(guild=interaction.guild, state=state, data=role_payload)
+        ret.append(role)
     return ret
