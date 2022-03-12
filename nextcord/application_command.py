@@ -76,6 +76,42 @@ __all__ = (
 DEFAULT_SLASH_DESCRIPTION = "No description provided."
 
 
+class AppCmdCallbackWrapper:
+    def __new__(
+            cls,
+            callback: Union[Callable, AppCmdCallbackWrapper, BaseApplicationCommand, BaseApplicationSubcommand]
+    ):
+        # wrapper = cls(callback)
+        wrapper = super(AppCmdCallbackWrapper, cls).__new__(cls)
+        wrapper.__init__(callback=callback)
+        if isinstance(callback, (BaseApplicationCommand, BaseApplicationSubcommand)):
+            print(callback, type(callback), wrapper, type(wrapper))
+            callback.modify_callbacks += wrapper.modify_callbacks
+            return callback
+        else:
+            return wrapper
+
+    def __init__(self, callback: Union[Callable, AppCmdCallbackWrapper]):
+        # noinspection PyTypeChecker
+        self.callback: Callable = None
+        self.modify_callbacks: List[Callable] = [self.modify]
+        if isinstance(callback, AppCmdCallbackWrapper):
+            self.callback = callback.callback
+            self.modify_callbacks += callback.modify_callbacks
+        else:
+            self.callback = callback
+
+    def modify(self, app_cmd: BaseApplicationCommand):
+        raise NotImplementedError
+
+
+class AppCmdWrapperMixin:
+    def __init__(self, callback: Union[Callable, AppCmdCallbackWrapper]):
+        self.modify_callbacks: List[Callable] = []
+        if isinstance(callback, AppCmdCallbackWrapper):
+            self.modify_callbacks += callback.modify_callbacks
+
+
 class ApplicationCommandOption:
     def __init__(
             self,
@@ -89,6 +125,26 @@ class ApplicationCommandOption:
             max_value: Union[int, float] = MISSING,
             autocomplete: bool = MISSING,
     ):
+        """This represents the `Application Command Option Structure
+        <https://discord.com/developers/docs/interactions/application-commands#application-command-object-application-command-option-structure>`_
+        with no frills added.
+
+        Parameters
+        ----------
+        cmd_type: :class:`ApplicationCommandOptionType`
+            Type of option the command should have.
+        name: :class:`str`
+            Display name of the option. Must be lowercase with no spaces, 1-32 characters.
+        description: :class:`str`
+            Description of the option. Must be 1-100 characters.
+        required: :class:`bool`
+            If the option is required or optional.
+        choices
+        channel_types: List[:class:`ChannelType`]
+        min_value: Union[:class:`int`, :class:`float`]
+        max_value: Union[:class:`int`, :class:`float`]
+        autocomplete: :class:`bool`
+        """
         self.type: Optional[ApplicationCommandOptionType] = cmd_type
         self.name: Optional[str] = name
         self.description: Optional[str] = description
@@ -101,6 +157,7 @@ class ApplicationCommandOption:
 
     @property
     def payload(self) -> dict:
+        """Returns a dict payload made of the attributes of the option to be sent to Discord."""
         # noinspection PyUnresolvedReferences
         ret = {"type": self.type.value, "name": self.name, "description": self.description}
         if self.required:
@@ -125,16 +182,33 @@ class ApplicationCommandOption:
 
 class BaseCommandOption(ApplicationCommandOption):
     def __init__(self, parameter: Parameter, parent_cog: ClientCog = MISSING):
+        """Represents an application command option, but takes a Parameter and ClientCog as an argument.
+
+        Parameters
+        ----------
+        parameter: :class:`Parameter`
+            Function parameter to construct the command option with.
+        parent_cog: :class:`ClientCog`
+            Class that the function the option is for resides in.
+        """
         ApplicationCommandOption.__init__(self)
         self.parameter: Parameter = parameter
         self.functional_name: str = parameter.name
-        self.parent_cog: Optional[ClientCog] = parent_cog
         """Name of the kwarg in the function/method"""
+        self.parent_cog: Optional[ClientCog] = parent_cog
 
 
 class OptionConverter(_CustomTypingMetaBase):
-    def __init__(self, param_type: Union[type, ApplicationCommandOptionType] = str):
-        self.type: Union[type, ApplicationCommandOptionType] = param_type
+    def __init__(self, option_type: Union[type, ApplicationCommandOptionType] = str):
+        """Based on, in basic functionality, to the ext.commands Converter. Users subclass this and use convert to
+        provide custom "typings" for slash commands.
+
+        Parameters
+        ----------
+        option_type: Union[:class:`type`, :class:`ApplicationCommandOptionType`]
+            Option type to forward to Discord.
+        """
+        self.type: Union[type, ApplicationCommandOptionType] = option_type
 
     async def convert(self, state: ConnectionState, interaction: Interaction, value: Any) -> Any:
         raise NotImplementedError
@@ -202,10 +276,20 @@ class CallbackMixin:
     name: str
     options: Dict[str, BaseCommandOption]
 
-    def __init__(self, callback: Optional[Callable], parent_cog: Optional[ClientCog] = MISSING):
+    def __init__(self, callback: Optional[Callable] = None, parent_cog: Optional[ClientCog] = MISSING):
+        """Contains code specific for adding callback support to a command class.
+
+        Parameters
+        ----------
+        callback: Optional[Callable]
+            Callback to create options from and invoke. If provided, it must be a coroutine function.
+        parent_cog: Optional[:class:`ClientCog`]
+            Class that the callback resides on. Will be passed into the callback if provided.
+        """
         self.callback: Callable = callback
         if self.callback:
             if not asyncio.iscoroutinefunction(self.callback):
+                print(self.callback, type(self.callback))
                 raise TypeError("Callback must be a coroutine")
         self.parent_cog = parent_cog
 
@@ -220,6 +304,23 @@ class CallbackMixin:
             callback: Callable,
             option_class: Optional[Type[BaseCommandOption]] = BaseCommandOption
     ):
+        """Creates objects of type `option_class` with the parameters of the function, and stores them in
+        the options attribute.
+
+        Parameters
+        ----------
+        callback: Callable
+            Callback to create options from. Must be a coroutine function.
+        option_class: Optional[Type[:class:`BaseCommandOption`]]
+            Class to create the options using. Should either be or subclass :class:`BaseCommandOption`. Defaults
+            to :class:`BaseCommandOption`.
+
+        Returns
+        -------
+        self:
+            Self for possible chaining.
+
+        """
         self.callback = callback
         if not asyncio.iscoroutinefunction(self.callback):
             raise TypeError("Callback must be a coroutine")
@@ -230,10 +331,11 @@ class CallbackMixin:
         if option_class:
             first_arg = True
             typehints = typing.get_type_hints(self.callback)
-            # self_skip = inspect.ismethod(self.callback)
+            # self_skip = inspect.ismethod(self.callback)  # Getting the callback as a method was problematic. Look
+            #  into this in the future, it's better than just checking if self.parent_cog exists.
             self_skip = True if self.parent_cog else False
             for name, param in signature(self.callback).parameters.items():
-                # self_skip = name == "self"  # inspect.ismethod(self.callback) or
+                # self_skip = name == "self"  # If self.parent_cog isn't reliable enough for some reason, use this.
 
                 if first_arg:
                     if not self_skip:
@@ -246,20 +348,40 @@ class CallbackMixin:
                         param = param.replace(annotation=typehints.get(name, param.empty))
                     arg = option_class(param, parent_cog=self.parent_cog)
                     self.options[arg.name] = arg
-        return self
 
     @property
     def error_name(self) -> str:
+        """Returns a string containing the class name, command name, and the callback to use in raising exceptions."""
         return f"{self.__class__.__name__} {self.name} {self.callback}"
 
 
 class AutocompleteOptionMixin:
-    def __init__(self, parent_cog: ClientCog = MISSING, autocomplete_callback: Callable = MISSING):
-        self.parent_cog: Optional[ClientCog] = parent_cog
-        self.autocomplete_options: Set[str] = set()
+    def __init__(self, autocomplete_callback: Callable = MISSING, parent_cog: ClientCog = MISSING):
+        """Contains code for providing autocomplete support, specifically for options.
+
+        Parameters
+        ----------
+        autocomplete_callback: `Callable`
+            Callback to create options from and invoke. If provided, it must be a coroutine function.
+        parent_cog: Optional[:class:`ClientCog`]
+            Class that the callback resides on. Will be passed into the callback if provided.
+
+        """
         self.autocomplete_callback: Optional[Callable] = autocomplete_callback
+        self.autocomplete_options: Set[str] = set()
+        self.parent_cog: Optional[ClientCog] = parent_cog
 
     def from_autocomplete_callback(self, callback: Callable):
+        """Parses
+
+        Parameters
+        ----------
+        callback
+
+        Returns
+        -------
+
+        """
         self.autocomplete_callback = callback
         if not asyncio.iscoroutinefunction(self.autocomplete_callback):
             raise TypeError("Callback must be a coroutine")
@@ -583,6 +705,8 @@ class SlashCommandOption(BaseCommandOption, SlashOption, AutocompleteOptionMixin
         else:
             # Else, just set the default to whatever cmd_arg is set to. Either MISSING, or something set by the user.
             self.default = cmd_arg.default
+        if self.default is MISSING:
+            self.default = None
 
         self.converter: Optional[OptionConverter] = MISSING
 
@@ -671,14 +795,21 @@ class SlashCommandOption(BaseCommandOption, SlashOption, AutocompleteOptionMixin
         elif self.type is ApplicationCommandOptionType.attachment:
             resolved_attachment_data: dict = interaction.data["resolved"]["attachments"][value]
             value = Attachment(data=resolved_attachment_data, state=state)
+        elif self.type is ApplicationCommandOptionType.mentionable:
+            user_role_list = get_users_from_interaction(state, interaction) + \
+                             get_roles_from_interaction(state, interaction)
+            mentionables = {mentionable.id: mentionable for mentionable in user_role_list}
+            value = mentionables[int(value)]
 
         if self.converter:
             return await self.converter.convert(state, interaction, value)
+        if value is MISSING:
+            return None
         else:
             return value
 
 
-class BaseApplicationSubcommand(CallbackMixin):
+class BaseApplicationSubcommand(CallbackMixin, AppCmdWrapperMixin):
     def __init__(
             self,
             name: str = MISSING,
@@ -688,7 +819,11 @@ class BaseApplicationSubcommand(CallbackMixin):
             cmd_type: ApplicationCommandOptionType = MISSING,
             parent_cog: Optional[ClientCog] = None,
     ):
-        super().__init__(callback=callback, parent_cog=parent_cog)
+        AppCmdWrapperMixin.__init__(self, callback)
+        if isinstance(callback, AppCmdCallbackWrapper):
+            callback = callback.callback
+        CallbackMixin.__init__(self, callback=callback, parent_cog=parent_cog)
+
         self.name: str = name
         self._description: str = description
         self.type: ApplicationCommandOptionType = cmd_type
@@ -726,9 +861,12 @@ class BaseApplicationSubcommand(CallbackMixin):
             if self.children:
                 for child in self.children.values():
                     child.from_callback(callback=child.callback, option_class=option_class, call_children=call_children)
+        for modify_callback in self.modify_callbacks:
+            modify_callback(self)
+        return self
 
 
-class BaseApplicationCommand(CallbackMixin):
+class BaseApplicationCommand(CallbackMixin, AppCmdWrapperMixin):
     def __init__(
             self,
             name: str = MISSING,
@@ -740,7 +878,10 @@ class BaseApplicationCommand(CallbackMixin):
             parent_cog: Optional[ClientCog] = None,
             force_global: bool = False
     ):
-        super().__init__(callback=callback, parent_cog=parent_cog)
+        AppCmdWrapperMixin.__init__(self, callback)
+        if isinstance(callback, AppCmdCallbackWrapper):
+            callback = callback.callback
+        CallbackMixin.__init__(self, callback=callback, parent_cog=parent_cog)
         self._state: Optional[ConnectionState] = None
         self.type: ApplicationCommandType = cmd_type
         self.name: str = name
@@ -881,6 +1022,13 @@ class BaseApplicationCommand(CallbackMixin):
                 return False
         return True
 
+    def from_callback(
+            self,
+            callback: Callable,
+            option_class: Optional[Type[BaseCommandOption]] = BaseCommandOption
+    ):
+        super().from_callback(callback=callback, option_class=option_class)
+
     async def call(self, state: ConnectionState, interaction: Interaction):
         raise NotImplementedError
 
@@ -967,6 +1115,7 @@ class SlashApplicationCommand(BaseApplicationCommand, SlashCommandMixin, Autocom
                                         force_global=force_global)
         AutocompleteCommandMixin.__init__(self, parent_cog=parent_cog)
         self.children: Dict[str, SlashApplicationSubcommand] = {}
+        self.options: Dict[str, SlashCommandOption] = {}  # Here for typing purposes.
 
     @property
     def description(self) -> str:
@@ -1005,6 +1154,8 @@ class SlashApplicationCommand(BaseApplicationCommand, SlashCommandMixin, Autocom
         if call_children and self.children:
             for child in self.children.values():
                 child.from_callback(callback=child.callback, option_class=option_class, call_children=call_children)
+        for modify_callback in self.modify_callbacks:
+            modify_callback(self)
 
     def subcommand(
             self,
@@ -2446,10 +2597,7 @@ class Mentionable(OptionConverter):
         super().__init__(ApplicationCommandOptionType.mentionable)
 
     async def convert(self, state: ConnectionState, interaction: Interaction, value: Any) -> Any:
-        mentionables = {mentionable.id: mentionable for mentionable in (
-                get_users_from_interaction(state, interaction) + get_roles_from_interaction(state, interaction)
-        )}
-        return mentionables[int(value)]
+        return value
 
 
 def check_dictionary_values(dict1: dict, dict2: dict, *keywords) -> bool:
@@ -2494,8 +2642,8 @@ def deep_dictionary_check(dict1: dict, dict2: dict) -> bool:
 def get_users_from_interaction(state: ConnectionState, interaction: Interaction) -> List[Union[User, Member]]:
     data = interaction.data
     # Return a Member object if the required data is available, otherwise fall back to User.
+    ret = []
     if "members" in data["resolved"]:
-        ret = []
         member_payloads = data["resolved"]["members"]
         # Because the payload is modified further down, a copy is made to avoid affecting methods or
         #  users that read from interaction.data further down the line.
@@ -2508,30 +2656,35 @@ def get_users_from_interaction(state: ConnectionState, interaction: Interaction)
                 member = Member(data=member_payload, guild=interaction.guild, state=state)
                 interaction.guild._add_member(member)
             ret.append(member)
-    else:
+    elif "users" in data["resolved"]:
         resolved_users_payload = interaction.data["resolved"]["users"]
         ret = [state.store_user(user_payload) for user_payload in resolved_users_payload.values()]
+    else:
+        pass  # Do nothing, we can't get users or members from this interaction.
     return ret
 
 
 def get_messages_from_interaction(state: ConnectionState, interaction: Interaction) -> List[Message]:
     data = interaction.data
-    message_payloads = data["resolved"]["messages"]
     ret = []
-    for msg_id, msg_payload in message_payloads.items():
-        if not (message := state._get_message(msg_id)):
-            message = Message(channel=interaction.channel, data=msg_payload, state=state)
-        ret.append(message)
+    if "messages" in data["resolved"]:
+        message_payloads = data["resolved"]["messages"]
+
+        for msg_id, msg_payload in message_payloads.items():
+            if not (message := state._get_message(msg_id)):
+                message = Message(channel=interaction.channel, data=msg_payload, state=state)
+            ret.append(message)
     return ret
 
 
 def get_roles_from_interaction(state: ConnectionState, interaction: Interaction) -> List[Role]:
     data = interaction.data
-    role_payloads = data["resolved"]["roles"]
     ret = []
-    for role_id, role_payload in role_payloads.items():
-        if not (role := interaction.guild.get_role(role_id)):
-        # if True:
-            role = Role(guild=interaction.guild, state=state, data=role_payload)
-        ret.append(role)
+    if "roles" in data["resolved"]:
+        role_payloads = data["resolved"]["roles"]
+        for role_id, role_payload in role_payloads.items():
+            # if True:  # Use this for testing payload -> Role
+            if not (role := interaction.guild.get_role(role_id)):
+                role = Role(guild=interaction.guild, state=state, data=role_payload)
+            ret.append(role)
     return ret
