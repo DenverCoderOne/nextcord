@@ -1178,6 +1178,7 @@ class Message(Hashable):
         delete_after: Optional[float] = ...,
         allowed_mentions: Optional[AllowedMentions] = ...,
         view: Optional[View] = ...,
+        file: Optional[File] = ...,
     ) -> Message:
         ...
 
@@ -1192,6 +1193,37 @@ class Message(Hashable):
         delete_after: Optional[float] = ...,
         allowed_mentions: Optional[AllowedMentions] = ...,
         view: Optional[View] = ...,
+        file: Optional[File] = ...,
+    ) -> Message:
+        ...
+
+    @overload
+    async def edit(
+        self,
+        *,
+        content: Optional[str] = ...,
+        embed: Optional[Embed] = ...,
+        attachments: List[Attachment] = ...,
+        suppress: bool = ...,
+        delete_after: Optional[float] = ...,
+        allowed_mentions: Optional[AllowedMentions] = ...,
+        view: Optional[View] = ...,
+        files: Optional[List[File]] = ...,
+    ) -> Message:
+        ...
+
+    @overload
+    async def edit(
+        self,
+        *,
+        content: Optional[str] = ...,
+        embeds: List[Embed] = ...,
+        attachments: List[Attachment] = ...,
+        suppress: bool = ...,
+        delete_after: Optional[float] = ...,
+        allowed_mentions: Optional[AllowedMentions] = ...,
+        view: Optional[View] = ...,
+        files: Optional[List[File]] = ...,
     ) -> Message:
         ...
 
