@@ -33,7 +33,19 @@ import inspect
 import sys
 import traceback
 import types
-from typing import TYPE_CHECKING, Any, Callable, Dict, List, Mapping, Optional, Type, TypeVar, Union
+from typing import (
+    TYPE_CHECKING,
+    Any,
+    Callable,
+    Dict,
+    Iterable,
+    List,
+    Mapping,
+    Optional,
+    Type,
+    TypeVar,
+    Union,
+)
 
 import nextcord
 
@@ -50,7 +62,9 @@ if TYPE_CHECKING:
     from nextcord.message import Message
     from nextcord.types.checks import ApplicationCheck, ApplicationHook
 
-    from ._types import Check, CoroFunc
+    from ._types import Check, CoroFunc, MaybeCoro
+
+    PrefixType = Union[str, Iterable[str], Callable[..., MaybeCoro[Union[str, Iterable[str]]]]]
 
 __all__ = (
     "when_mentioned",
@@ -128,7 +142,7 @@ _default = _DefaultRepr()
 class BotBase(GroupMixin):
     def __init__(self, command_prefix=MISSING, help_command=_default, description=None, **options):
         super().__init__(**options)
-        self.command_prefix = command_prefix if command_prefix is not MISSING else tuple()
+        self.command_prefix: PrefixType = command_prefix if command_prefix is not MISSING else []
         self.extra_events: Dict[str, List[CoroFunc]] = {}
         self.__cogs: Dict[str, Cog] = {}
         self.__extensions: Dict[str, types.ModuleType] = {}
@@ -1236,7 +1250,7 @@ class Bot(BotBase, nextcord.Client):
 
     Attributes
     -----------
-    command_prefix
+    command_prefix: Union[:class:`str`, Iterable[:class:`str`], Callable[..., MaybeCoro[Union[:class:`str`, Iterable[:class:`str`]]]]]
         The command prefix is what the message content must contain initially
         to have a command invoked. This prefix could either be a string to
         indicate what the prefix should be, or a callable that takes in the bot
